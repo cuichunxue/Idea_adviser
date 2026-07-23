@@ -26,13 +26,35 @@ KEYWORD_WEIGHT = 2
 CONTEXT_WEIGHT = 1
 
 # 漢字・カタカナが2文字以上連続する箇所を語として抽出する。
-_TERM_PATTERN = re.compile(r"[一-鿿゠-ヿー]{2,}")
+# (カタカナ範囲は「ァ-ヶー」に限定し、中黒「・」等の記号を含む
+#  全カタカナブロックは使わない。記号を含めると「原因・対策」のように
+#  無関係な2語が1トークンに融合し、抽出語として機能しなくなる)
+_TERM_PATTERN = re.compile(r"[一-鿿ァ-ヶー]{2,}")
 
 # best_for から抽出しても選定シグナルとして使わない、汎用的すぎる語。
-# (どの発想法の説明文にも出てきうる/どんな入力にも出てきうる語)
+# (どの発想法の説明文にも出てきうる/どんな入力にも出てきうる語。
+#  「発想」「アイデア」はこのアプリのテーマそのものであり、
+#  特定の発想法を示すシグナルにならないため除外する)
 _STOPWORDS = {
     "とき", "場合", "こと", "自分", "内容", "検討", "問題", "課題",
     "考え", "対応", "整理", "確認", "何か", "説明", "議論", "案件",
+    "発想", "アイデア", "方向", "特定",
+}
+
+# キーワード・best_for の完全一致だけでは拾いにくい、構文レベルの
+# シグナル。「Xすると(望ましくない)Yになってしまう」という技術的
+# トレードオフの言い回しは、個別の単語をいくら列挙してもキリがない
+# ため、パターンとして検出しボーナス加点する。
+_PATTERN_BONUS: dict[str, tuple[re.Pattern[str], int, str]] = {
+    "triz": (
+        re.compile(
+            r"(すると|すれば)[^。\n]{0,20}"
+            r"(てしま|くく|づらく|にくく|悪化|落ちる|増えて|減って|下がっ|上がって"
+            r"|重くな|軽くな|遅くな|速くな|弱くな|強くな|高くな|低くな)"
+        ),
+        2,
+        "「〜すると…てしまう」という技術的トレードオフの言い回し",
+    ),
 }
 
 
@@ -89,6 +111,14 @@ def score_methods(text: str) -> list[MethodScore]:
             reason_parts.append(f"「{'」「'.join(matched_kw)}」に関連する語")
         if matched_ctx:
             reason_parts.append(f"向いている場面(「{'」「'.join(matched_ctx)}」)に関連する語")
+
+        pattern = _PATTERN_BONUS.get(method.id)
+        if pattern is not None:
+            pat, bonus, description = pattern
+            if pat.search(text):
+                score += bonus
+                reason_parts.append(description)
+
         reason = (
             f"入力内容に{'、'.join(reason_parts)}が見られたため、{method.name_ja}が適していると判断しました。"
             if reason_parts
