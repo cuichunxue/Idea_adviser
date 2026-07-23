@@ -56,6 +56,25 @@ def test_realistic_phrasing_selects_expected_method(text, expected_method_id):
     assert result[0].score > 0
 
 
+# 動詞の活用形(辞書形・連用形・て形)によってキーワードが拾えなくなる
+# 語幹バグの回帰テスト。「行き詰まり」→「行き詰まって」で一度見つかった
+# クラスのバグが、他の動詞終わりキーワードにも潜んでいないかを確認する。
+CONJUGATION_CASES = [
+    ("この業界の常識を疑いたい", "reversal"),  # 常識を疑う -> 連用形+たい
+    ("当たり前を逆に考えたいと思っている", "reversal"),  # 逆に考える -> 連用形+たい
+    ("従来のやり方を覆したい新しい打ち手が欲しい", "reversal"),  # 覆す -> 連用形+たい
+    ("自分が正しいと思い込んでいる前提に気づきたい", "reversal"),  # 思い込む -> て形(音便)
+    ("この意思決定の前提を問い直したい", "socratic"),  # 問い直す -> 連用形+たい
+]
+
+
+@pytest.mark.parametrize("text,expected_method_id", CONJUGATION_CASES)
+def test_verb_conjugation_variants_still_match(text, expected_method_id):
+    result = select_methods(text)
+    assert result[0].method.id == expected_method_id
+    assert result[0].score > 0
+
+
 DISTRACTOR_CASES = [
     "来月の家族旅行の計画を立てたい",
     "猫の名前を考えたい",
