@@ -63,6 +63,20 @@ def _format_method_run(run: MethodRun, index: int, switched_from_name: str | Non
         if evaluation.recommendation:
             lines.append("**総合提案**")
             lines.append(f"> {evaluation.recommendation}")
+            lines.append("")
+        deep_dive = evaluation.deep_dive
+        if deep_dive is not None:
+            lines.append(f"**深掘り: {deep_dive.idea}**")
+            if deep_dive.first_steps:
+                lines.append("- 最初の一手:")
+                for step_text in deep_dive.first_steps:
+                    lines.append(f"  - {step_text}")
+            if deep_dive.key_risks:
+                lines.append("- 主要リスク・前提条件:")
+                for risk in deep_dive.key_risks:
+                    lines.append(f"  - {risk}")
+            if deep_dive.success_metric:
+                lines.append(f"- 成功指標: {deep_dive.success_metric}")
 
     return "\n".join(lines)
 

@@ -5,9 +5,13 @@
 1. その発想法が本当にお題に適合していたか(``fit_score``)
 2. 出てきたアイデアの中でどれが有望か(``ranked_ideas``)
 3. 結局何をすべきか(``recommendation``)
+4. 最有力の1案を、実行可能な最初の一手まで深掘りしたもの(``deep_dive``)
 
-を返す。生の羅列を出すだけで終わらせず、評価・統合まで行うことで
-Tree-of-Thoughts のような「候補を比較し、有望なものを選ぶ」工程を補う。
+を返す。生の羅列を出すだけで終わらせず、評価・統合・深掘りまで行う
+ことで、Tree-of-Thoughts のような「候補を比較し、有望なものを選ぶ」
+工程を補う。全アイデアを深掘りすると呼び出し回数が膨らむため、
+深掘りは最有力の1案だけに絞り、既存の評価呼び出し1回に含めることで
+LLM呼び出し回数を増やさずに戦略的な深さを加える。
 
 ``TemplateGenerator``(API不要)で生成した空欄アイデアには意味のある
 評価ができないため、既定は何もしない ``NullEvaluator``。
@@ -35,10 +39,21 @@ class RankedIdea:
 
 
 @dataclass
+class DeepDive:
+    """最有力の1案だけを対象にした、実行に踏み込んだ深掘り。"""
+
+    idea: str
+    first_steps: tuple[str, ...] = field(default_factory=tuple)
+    key_risks: tuple[str, ...] = field(default_factory=tuple)
+    success_metric: str = ""
+
+
+@dataclass
 class Evaluation:
     fit_score: float | None = None  # 0-10。None は「評価していない」ことを表す
     ranked_ideas: tuple[RankedIdea, ...] = field(default_factory=tuple)
     recommendation: str = ""
+    deep_dive: DeepDive | None = None
 
     @property
     def evaluated(self) -> bool:
@@ -89,14 +104,21 @@ class AnthropicEvaluator:
             f"適用した発想法: {method.name_ja}({method.summary})\n\n"
             "以下は、この発想法の各ステップに沿って出したアイデア案です。\n"
             f"{ideas_block}\n\n"
-            "次の3点を、日本語で、JSONのみを出力して答えてください"
+            "次の4点を、日本語で、JSONのみを出力して答えてください"
             "(説明文やコードフェンスは付けないでください):\n"
             "1. fit_score: この発想法がこのお題に対してどれだけ適切だったかを0〜10の整数で。\n"
             f"2. top_ideas: 上記アイデアの中から実行可能性・効果の観点で有望な順に最大{self.top_n}件選び、"
             "それぞれ idea(元の文言)・score(0〜10)・rationale(1文の理由)を含めること。\n"
-            "3. recommendation: 結局何をすべきか、最も有望なアイデアを軸にした2〜4文の具体的な統合提案。\n\n"
+            "3. recommendation: 結局何をすべきか、最も有望なアイデアを軸にした2〜4文の具体的な統合提案。\n"
+            "4. deep_dive: top_ideas の中で最も有望な1案(idea)だけを対象に、"
+            "実行に踏み込んで深掘りすること。first_steps(最初に着手すべき具体的な"
+            "アクション2〜4件)、key_risks(実行を妨げうる主要リスクや前提条件2〜3件)、"
+            "success_metric(成功したかどうかをどう測るか、1文)を含めること。\n\n"
             '出力形式: {"fit_score": <int>, "top_ideas": '
-            '[{"idea": "...", "score": <number>, "rationale": "..."}], "recommendation": "..."}'
+            '[{"idea": "...", "score": <number>, "rationale": "..."}], '
+            '"recommendation": "...", "deep_dive": {"idea": "...", '
+            '"first_steps": ["...", "..."], "key_risks": ["...", "..."], '
+            '"success_metric": "..."}}'
         )
         response = self._client.messages.create(
             model=self.model,
@@ -127,10 +149,22 @@ def _parse_evaluation(text: str) -> Evaluation:
             for item in data.get("top_ideas", [])
         )
         recommendation = str(data.get("recommendation", ""))
+
+        deep_dive_data = data.get("deep_dive")
+        deep_dive = None
+        if isinstance(deep_dive_data, dict) and deep_dive_data.get("idea"):
+            deep_dive = DeepDive(
+                idea=str(deep_dive_data.get("idea", "")),
+                first_steps=tuple(str(s) for s in deep_dive_data.get("first_steps", [])),
+                key_risks=tuple(str(r) for r in deep_dive_data.get("key_risks", [])),
+                success_metric=str(deep_dive_data.get("success_metric", "")),
+            )
+
         return Evaluation(
             fit_score=float(fit_score) if fit_score is not None else None,
             ranked_ideas=ranked,
             recommendation=recommendation,
+            deep_dive=deep_dive,
         )
     except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
         return Evaluation(recommendation="(評価結果の解析に失敗しました)")
