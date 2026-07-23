@@ -18,10 +18,15 @@ def _format_method_run(run: MethodRun, index: int) -> str:
 
     if score.forced:
         lines.append(f"**選定理由**: {score.reason}")
-    elif score.matched_keywords:
+    elif score.matched_keywords or score.matched_context:
         lines.append(f"**選定理由** (マッチ度スコア {score.score}): {score.reason}")
     else:
         lines.append(f"**選定理由**: {score.reason}")
+    lines.append("")
+
+    lines.append("**向いている場面**")
+    for b in method.best_for:
+        lines.append(f"- {b}")
     lines.append("")
 
     lines.append("**この発想法の効果**")
