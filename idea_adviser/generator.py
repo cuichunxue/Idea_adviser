@@ -23,6 +23,27 @@ class IdeaGenerator(Protocol):
         ...
 
 
+def resolve_anthropic_client(api_key: str | None):
+    """Anthropic API キーを解決し、クライアントを生成する共通処理。
+
+    AnthropicGenerator と AnthropicEvaluator の両方から使われる。
+    """
+
+    resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    if not resolved_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY が設定されていません。"
+            "環境変数を設定するか、api_key=... を指定してください。"
+        )
+    try:
+        import anthropic  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError(
+            "Claude API 連携を使うには `pip install anthropic` が必要です。"
+        ) from exc
+    return anthropic.Anthropic(api_key=resolved_key)
+
+
 @dataclass
 class TemplateGenerator:
     """APIを使わず、発想法のステップを具体化した検討プロンプトを返す既定実装。
@@ -47,19 +68,7 @@ class AnthropicGenerator:
     max_tokens: int = 1024
 
     def __post_init__(self) -> None:
-        self.api_key = self.api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY が設定されていません。"
-                "環境変数を設定するか、AnthropicGenerator(api_key=...) を指定してください。"
-            )
-        try:
-            import anthropic  # type: ignore
-        except ImportError as exc:  # pragma: no cover - optional dependency
-            raise ImportError(
-                "AnthropicGenerator を使うには `pip install anthropic` が必要です。"
-            ) from exc
-        self._client = anthropic.Anthropic(api_key=self.api_key)
+        self._client = resolve_anthropic_client(self.api_key)
 
     def generate(self, topic: str, step_title: str, step_question: str, n: int) -> list[str]:
         prompt = (

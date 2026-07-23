@@ -5,7 +5,7 @@ from __future__ import annotations
 from idea_adviser.orchestrator import MethodRun, OrchestratorResult
 
 
-def _format_method_run(run: MethodRun, index: int) -> str:
+def _format_method_run(run: MethodRun, index: int, switched_from_name: str | None = None) -> str:
     method = run.method
     score = run.score
     lines: list[str] = []
@@ -16,7 +16,12 @@ def _format_method_run(run: MethodRun, index: int) -> str:
     lines.append(f"> {method.summary}")
     lines.append("")
 
-    if score.forced:
+    if switched_from_name is not None:
+        lines.append(
+            f"**選定理由**: キーワードマッチでは{switched_from_name}が上位だったが、"
+            "生成後の評価(適合度)がこちらの方が高かったため切り替えて採用。"
+        )
+    elif score.forced:
         lines.append(f"**選定理由**: {score.reason}")
     elif score.matched_keywords or score.matched_context:
         lines.append(f"**選定理由** (マッチ度スコア {score.score}): {score.reason}")
@@ -43,6 +48,22 @@ def _format_method_run(run: MethodRun, index: int) -> str:
         for idea in step.ideas:
             lines.append(f"- {idea}")
 
+    evaluation = run.evaluation
+    if evaluation.evaluated:
+        lines.append("")
+        lines.append("### 評価・統合")
+        lines.append(f"**適合度**: {evaluation.fit_score:.0f}/10"
+                      "(この発想法が実際にこのお題に適していたか)")
+        lines.append("")
+        if evaluation.ranked_ideas:
+            lines.append("**有望なアイデア(順位付け)**")
+            for i, ranked in enumerate(evaluation.ranked_ideas, start=1):
+                lines.append(f"{i}. **{ranked.idea}** (score: {ranked.score:.0f}/10) — {ranked.rationale}")
+            lines.append("")
+        if evaluation.recommendation:
+            lines.append("**総合提案**")
+            lines.append(f"> {evaluation.recommendation}")
+
     return "\n".join(lines)
 
 
@@ -56,10 +77,19 @@ def to_markdown(result: OrchestratorResult) -> str:
     else:
         names = " / ".join(r.method.name_ja for r in result.runs)
         lines.append(f"選定された発想法({len(result.runs)}件): **{names}**")
+
+    if result.switched_from is not None:
+        lines.append(
+            f"(初回選定の**{result.switched_from.name_ja}**は評価の結果、適合度が低いと判断されたため、"
+            f"**{result.runs[0].method.name_ja}**に切り替えました)"
+        )
     lines.append("")
 
     for i, run in enumerate(result.runs, start=1):
-        lines.append(_format_method_run(run, i))
+        switched_from_name = (
+            result.switched_from.name_ja if i == 1 and result.switched_from is not None else None
+        )
+        lines.append(_format_method_run(run, i, switched_from_name))
         lines.append("")
 
     other_scores = [s for s in result.all_scores if s.method.id not in {r.method.id for r in result.runs}]

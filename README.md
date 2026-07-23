@@ -39,9 +39,20 @@ TRIZ の40の発明原理は `idea_adviser/triz_principles.py` にまとまっ�
    - `AnthropicGenerator`: Claude API を呼び出し、各ステップの問いに
      対する具体的なアイデアを自動生成する(`ANTHROPIC_API_KEY` が必要)。
 
-4. **レポート (`idea_adviser/report.py`)**
-   選定理由・発想法の効果・各ステップの問いとアイデアを Markdown レポート
-   にまとめる。
+4. **評価・統合 (`idea_adviser/evaluator.py`)**
+   生成しっぱなしで終わらせず、出てきたアイデアを評価・順位付けし、
+   最終的な統合提案(結局何をすべきか)にまとめる。あわせて、選んだ
+   発想法自体の「適合度」も判定し、閾値未満(既定10点中4点未満)なら
+   次点の発想法に自動で切り替える(バックトラック)。
+   - `NullEvaluator`(既定): 何もしない。`TemplateGenerator` の空欄
+     アイデアには評価のしようがないため。
+   - `AnthropicEvaluator`: Claude に生成済みアイデアを評価・順位付け
+     させ、統合提案を作らせる(`--use-llm` 時に自動で有効)。
+
+5. **レポート (`idea_adviser/report.py`)**
+   選定理由・発想法の効果・各ステップの問いとアイデア・評価結果・
+   統合提案を Markdown レポートにまとめる。切り替えが発生した場合は
+   その旨も明記する。
 
 ## 使い方
 
@@ -57,9 +68,12 @@ python -m idea_adviser "電動自転車の新機能を考えたい" --method sca
 # 上位2つの発想法を併用する
 python -m idea_adviser "新商品のアイデアを考えたい" --top-k 2
 
-# Claude API で実際にアイデアを生成する(ANTHROPIC_API_KEY が必要)
+# Claude API で実際にアイデアを生成し、評価・統合まで行う(ANTHROPIC_API_KEY が必要)
 export ANTHROPIC_API_KEY=sk-ant-...
 python -m idea_adviser "新商品のアイデアを考えたい" --use-llm
+
+# --use-llm 時、生成はするが評価・統合(追加のLLM呼び出し)は省略する
+python -m idea_adviser "新商品のアイデアを考えたい" --use-llm --no-evaluate
 ```
 
 ### ライブラリとして
@@ -75,14 +89,20 @@ print(result.primary.method.name_ja)  # -> オズボーンのチェックリス�
 print(to_markdown(result))
 ```
 
-Claude API でアイデアを自動生成したい場合:
+Claude API でアイデアを自動生成し、評価・統合まで行いたい場合:
 
 ```python
 from idea_adviser import Orchestrator
 from idea_adviser.generator import AnthropicGenerator
+from idea_adviser.evaluator import AnthropicEvaluator
 
-orchestrator = Orchestrator(generator=AnthropicGenerator())
-result = orchestrator.run("電動自転車の新機能を考えたい", method_id="scamper")
+orchestrator = Orchestrator(generator=AnthropicGenerator(), evaluator=AnthropicEvaluator())
+result = orchestrator.run("電動自転車の新機能を考えたい")
+
+print(result.primary.evaluation.fit_score)      # 例: 8.0
+print(result.primary.evaluation.recommendation)  # 統合提案(結局何をすべきか)
+if result.switched_from:
+    print(f"{result.switched_from.name_ja} から切り替わりました")
 ```
 
 ## 開発

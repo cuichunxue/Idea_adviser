@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from idea_adviser.evaluator import AnthropicEvaluator, NullEvaluator
 from idea_adviser.generator import AnthropicGenerator, TemplateGenerator
 from idea_adviser.methods import METHODS
 from idea_adviser.orchestrator import Orchestrator
@@ -58,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="claude-sonnet-5",
         help="--use-llm 使用時のモデル名(既定: claude-sonnet-5)。",
     )
+    parser.add_argument(
+        "--no-evaluate",
+        action="store_true",
+        help="--use-llm 使用時でも、生成したアイデアの評価・順位付け・統合提案(追加のLLM呼び出し)を行わない。",
+    )
     parser.add_argument("--output", "-o", help="レポートの出力先ファイル(省略時は標準出力)。")
     return parser
 
@@ -81,7 +87,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("お題が空です。引数、--file、または標準入力で指定してください。")
 
     generator = AnthropicGenerator(model=args.model) if args.use_llm else TemplateGenerator()
-    orchestrator = Orchestrator(generator=generator, ideas_per_step=args.ideas_per_step)
+    if args.use_llm and not args.no_evaluate:
+        evaluator = AnthropicEvaluator(model=args.model)
+    else:
+        evaluator = NullEvaluator()
+    orchestrator = Orchestrator(
+        generator=generator, evaluator=evaluator, ideas_per_step=args.ideas_per_step
+    )
     result = orchestrator.run(topic, top_k=args.top_k, method_id=args.method)
     report = to_markdown(result)
 
