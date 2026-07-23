@@ -1,0 +1,23 @@
+[project]
+name = "idea-adviser"
+version = "0.1.0"
+description = "入力内容に適した発想法を選び、アイデアを論理的に洗い出すオーケストレーター"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.40"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+idea-adviser = "idea_adviser.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["idea_adviser*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
