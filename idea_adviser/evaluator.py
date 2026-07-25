@@ -54,10 +54,21 @@ class Evaluation:
     ranked_ideas: tuple[RankedIdea, ...] = field(default_factory=tuple)
     recommendation: str = ""
     deep_dive: DeepDive | None = None
+    error: str = ""  # 評価を試みたが失敗した場合の理由(未評価とは区別する)
 
     @property
     def evaluated(self) -> bool:
         return self.fit_score is not None
+
+    @property
+    def failed(self) -> bool:
+        """評価を試みたが結果を取り出せなかった状態。
+
+        「そもそも評価していない」(NullEvaluator)と区別する。
+        これを区別しないと、LLMを呼んで失敗したことがユーザーに
+        伝わらないまま黙ってレポートから消える。
+        """
+        return bool(self.error) and not self.evaluated
 
 
 class IdeaEvaluator(Protocol):
@@ -166,5 +177,7 @@ def _parse_evaluation(text: str) -> Evaluation:
             recommendation=recommendation,
             deep_dive=deep_dive,
         )
-    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
-        return Evaluation(recommendation="(評価結果の解析に失敗しました)")
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+        return Evaluation(
+            error=f"評価結果の解析に失敗しました({type(exc).__name__})。アイデア一覧はそのまま利用できます。"
+        )

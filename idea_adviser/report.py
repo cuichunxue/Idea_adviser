@@ -5,12 +5,26 @@ from __future__ import annotations
 from idea_adviser.orchestrator import MethodRun, OrchestratorResult
 
 
+def _method_title(method) -> str:
+    """見出し用の手法名。和名と英名が重複する場合は繰り返さない。
+
+    例: TRIZ / "TRIZ (Theory of Inventive Problem Solving)" は
+    「TRIZ (TRIZ (Theory of...))」ではなく英名だけを使う。
+    """
+
+    if method.name_en == method.name_ja:
+        return method.name_ja
+    if method.name_en.startswith(method.name_ja):
+        return method.name_en
+    return f"{method.name_ja} ({method.name_en})"
+
+
 def _format_method_run(run: MethodRun, index: int, switched_from_name: str | None = None) -> str:
     method = run.method
     score = run.score
     lines: list[str] = []
 
-    header = f"## {index}. {method.name_ja} ({method.name_en})"
+    header = f"## {index}. {_method_title(method)}"
     lines.append(header)
     lines.append("")
     lines.append(f"> {method.summary}")
@@ -49,7 +63,11 @@ def _format_method_run(run: MethodRun, index: int, switched_from_name: str | Non
             lines.append(f"- {idea}")
 
     evaluation = run.evaluation
-    if evaluation.evaluated:
+    if evaluation.failed:
+        lines.append("")
+        lines.append("### 評価・統合")
+        lines.append(f"> ⚠ {evaluation.error}")
+    elif evaluation.evaluated:
         lines.append("")
         lines.append("### 評価・統合")
         lines.append(f"**適合度**: {evaluation.fit_score:.0f}/10"

@@ -48,3 +48,16 @@ def test_report_contains_topic_and_method_name():
     assert result.primary.method.name_ja in report
     for step in result.primary.steps:
         assert step.step_title in report
+
+
+def test_method_title_does_not_duplicate_name():
+    """和名と英名が重複する手法で見出しが「TRIZ (TRIZ (...))」にならないこと。"""
+    from idea_adviser.methods import METHODS
+    from idea_adviser.report import _method_title
+
+    assert _method_title(METHODS["triz"]) == "TRIZ (Theory of Inventive Problem Solving)"
+    assert _method_title(METHODS["scamper"]) == "SCAMPER"
+    assert _method_title(METHODS["six_hats"]) == "シックスハット法 (Six Thinking Hats)"
+    for method in METHODS.values():
+        title = _method_title(method)
+        assert title.count(method.name_ja) == 1, title

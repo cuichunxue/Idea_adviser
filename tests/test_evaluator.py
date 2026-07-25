@@ -156,3 +156,43 @@ def test_parse_evaluation_handles_missing_deep_dive_gracefully():
     evaluation = _parse_evaluation(text)
     assert evaluation.fit_score == 5.0
     assert evaluation.deep_dive is None
+
+
+class BrokenJsonEvaluator:
+    """LLMがJSONとして壊れた応答を返した状況を再現する。"""
+
+    def evaluate(self, topic, method, steps):
+        return _parse_evaluation("{壊れたJSON")
+
+
+def test_parse_failure_is_distinguished_from_not_evaluated():
+    evaluation = _parse_evaluation("{壊れたJSON")
+    assert evaluation.evaluated is False
+    assert evaluation.failed is True
+    assert evaluation.error
+
+    # NullEvaluator の「そもそも評価していない」状態とは区別される
+    assert NullEvaluator().evaluate("t", None, []).failed is False
+
+
+def test_parse_failure_is_surfaced_in_report():
+    """評価に失敗したことがレポートに出ずに黙って消えてはいけない。
+
+    LLM呼び出しのコストを払っているのに結果も理由も出ない、という
+    無言の失敗を防ぐための回帰テスト。
+    """
+    orchestrator = Orchestrator(generator=FakeGenerator(), evaluator=BrokenJsonEvaluator())
+    result = orchestrator.run("カスタマーサポートの対応フローを見直して非効率をなくしたい")
+    report = to_markdown(result)
+
+    assert result.primary.evaluation.failed is True
+    assert "解析に失敗" in report
+    # アイデア一覧そのものは失われない
+    assert "### アイデア出し" in report
+
+
+def test_parse_failure_does_not_trigger_method_switch():
+    """評価が失敗しただけで手法を切り替えてはいけない(適合度不明のため)。"""
+    orchestrator = Orchestrator(generator=FakeGenerator(), evaluator=BrokenJsonEvaluator())
+    result = orchestrator.run("フィットネスアプリの新機能を考えたい")
+    assert result.switched_from is None
